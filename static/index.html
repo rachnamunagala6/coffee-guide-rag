@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coffee guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bean: #E6EAD6;        /* page: the pale green of unroasted beans */
+    --paper: #F8F9F1;       /* answer surface */
+    --ink: #2A1A12;         /* dark roast */
+    --ink-soft: #66513F;
+    --cherry: #A3253A;      /* ripe coffee cherry: actions and citations */
+    --cherry-ink: #FFFFFF;
+    --line: #CBC9AE;
+    --you: #D7DCC2;         /* your questions */
+    --focus: #A3253A;
+    --serif: "Young Serif", Georgia, serif;
+    --sans: "Figtree", system-ui, -apple-system, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bean: #1D1510;
+      --paper: #2A1F18;
+      --ink: #EFE8D8;
+      --ink-soft: #B7A795;
+      --cherry: #E26A7C;
+      --cherry-ink: #1D1510;
+      --line: #47372B;
+      --you: #3A2C22;
+      --focus: #E26A7C;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bean);
+    color: var(--ink);
+    font: 400 1.0625rem/1.6 var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* The signature: a roast chart from green bean to dark roast. */
+  .roast {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    height: 10px;
+  }
+  .roast span:nth-child(1) { background: #A7B784; }
+  .roast span:nth-child(2) { background: #CDB27A; }
+  .roast span:nth-child(3) { background: #B07D4B; }
+  .roast span:nth-child(4) { background: #7F4E2C; }
+  .roast span:nth-child(5) { background: #52301D; }
+  .roast span:nth-child(6) { background: #2B1810; }
+
+  .wrap { width: 100%; max-width: 46rem; margin: 0 auto; padding: 0 1rem; }
+
+  header.top { padding: 2.25rem 0 1.25rem; }
+  .top .wrap { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: .25rem 1rem; }
+  .top .wrap > div { flex: 1 1 22rem; }
+  h1 {
+    font: 400 clamp(2.25rem, 6vw, 3.25rem)/1.05 var(--serif);
+    margin: 0 0 .5rem;
+    letter-spacing: -0.01em;
+  }
+  .lede { margin: 0; color: var(--ink-soft); max-width: 36rem; }
+
+  .reset {
+    flex: none;
+    font: 500 .9375rem var(--sans);
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: .45rem .9rem;
+    cursor: pointer;
+    margin-top: .5rem;
+  }
+  .reset:hover { border-color: var(--ink-soft); }
+  .reset[hidden] { display: none; }
+
+  main { flex: 1; padding-bottom: 1.5rem; }
+
+  /* Empty state: example questions, grouped by where you are. */
+  .starters { display: grid; grid-template-columns: 1fr 1fr; gap: 1.75rem; margin-top: 1rem; }
+  .starters[hidden] { display: none; }
+  .starters h2 { font: 400 1.375rem/1.2 var(--serif); margin: 0 0 .75rem; }
+  .starters ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+  .starters button {
+    width: 100%;
+    text-align: left;
+    font: 400 1rem/1.45 var(--sans);
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: .7rem .9rem;
+    cursor: pointer;
+  }
+  .starters button:hover { border-color: var(--cherry); }
+  @media (max-width: 640px) { .starters { grid-template-columns: 1fr; gap: 1.25rem; } }
+
+  /* Conversation */
+  .log { display: grid; gap: 1.25rem; }
+  .q {
+    justify-self: end;
+    max-width: 85%;
+    background: var(--you);
+    border-radius: 16px 16px 4px 16px;
+    padding: .6rem 1rem;
+    white-space: pre-wrap;
+  }
+  .a {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 4px 16px 16px 16px;
+    padding: 1rem 1.25rem;
+  }
+  .a p { margin: 0 0 .75rem; }
+  .a p:last-child, .a ul:last-child, .a ol:last-child { margin-bottom: 0; }
+  .a ul, .a ol { margin: 0 0 .75rem; padding-left: 1.4rem; }
+  .a li { margin: .25rem 0; }
+  .a h3 { font: 400 1.125rem/1.3 var(--serif); margin: 1rem 0 .4rem; }
+  .a code { font-size: .9em; background: var(--you); padding: .05em .3em; border-radius: 4px; }
+  .cite {
+    display: inline-block;
+    min-width: 1.15em;
+    padding: 0 .3em;
+    margin: 0 .05em;
+    font: 600 .7em/1.5 var(--sans);
+    text-align: center;
+    color: var(--cherry-ink);
+    background: var(--cherry);
+    border-radius: 4px;
+    vertical-align: .35em;
+    cursor: help;
+  }
+  .a details { margin-top: .9rem; padding-top: .75rem; border-top: 1px solid var(--line); }
+  .a summary { cursor: pointer; color: var(--ink-soft); font-size: .9375rem; }
+  .a details ol { margin: .5rem 0 0; color: var(--ink-soft); font-size: .9375rem; }
+  .a details li::marker { color: var(--cherry); font-weight: 600; }
+
+  .a.pending { color: var(--ink-soft); }
+  .a.pending::after { content: ""; animation: dots 1.4s steps(4) infinite; }
+  @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+  .a.failed { border-color: var(--cherry); }
+  .a.failed strong { color: var(--cherry); }
+
+  /* Composer */
+  .composer {
+    position: sticky;
+    bottom: 0;
+    background: linear-gradient(to top, var(--bean) 70%, transparent);
+    padding: 1.25rem 0 1.25rem;
+  }
+  form { display: flex; gap: .5rem; align-items: flex-end; }
+  textarea {
+    flex: 1;
+    resize: none;
+    font: 400 1.0625rem/1.5 var(--sans);
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: .75rem 1rem;
+    max-height: 10rem;
+  }
+  textarea::placeholder { color: var(--ink-soft); }
+  .send {
+    font: 600 1rem var(--sans);
+    color: var(--cherry-ink);
+    background: var(--cherry);
+    border: 0;
+    border-radius: 14px;
+    padding: .8rem 1.25rem;
+    cursor: pointer;
+  }
+  .send:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { margin: .5rem 0 0; font-size: .8125rem; color: var(--ink-soft); }
+
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  textarea:focus-visible { outline-offset: 0; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  @media (prefers-reduced-motion: reduce) { .a.pending::after { animation: none; content: "..."; } }
+</style>
+</head>
+<body>
+  <div class="roast" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+
+  <header class="top">
+    <div class="wrap">
+      <div>
+        <h1>Coffee guide</h1>
+        <p class="lede">Ask how to pick beans at the store or how to brew them at home. Every answer shows which part of the guide it came from.</p>
+      </div>
+      <button class="reset" id="reset" type="button" hidden>New conversation</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="starters" id="starters" aria-label="Example questions">
+      <div>
+        <h2>At the store</h2>
+        <ul>
+          <li><button type="button">What should I look for on a bag of coffee?</button></li>
+          <li><button type="button">I like smooth, chocolatey coffee. Which beans should I buy?</button></li>
+          <li><button type="button">Whole bean or pre-ground?</button></li>
+          <li><button type="button">What's the difference between light and dark roast?</button></li>
+        </ul>
+      </div>
+      <div>
+        <h2>At home</h2>
+        <ul>
+          <li><button type="button">How do I make coffee with a French press?</button></li>
+          <li><button type="button">How much coffee should I use per cup?</button></li>
+          <li><button type="button">My coffee tastes sour. What am I doing wrong?</button></li>
+          <li><button type="button">Should I keep my beans in the freezer?</button></li>
+        </ul>
+      </div>
+    </section>
+
+    <div class="log" id="log" aria-live="polite"></div>
+  </main>
+
+  <div class="composer">
+    <div class="wrap">
+      <form id="form">
+        <label for="question" class="sr-only">Your question</label>
+        <textarea id="question" rows="1" placeholder="Ask about beans, grinding or brewing" autocomplete="off"></textarea>
+        <button class="send" id="send" type="submit">Ask</button>
+      </form>
+      <p class="hint">Enter to ask, Shift+Enter for a new line.</p>
+    </div>
+  </div>
+
+<script>
+const form = document.getElementById("form");
+const input = document.getElementById("question");
+const sendBtn = document.getElementById("send");
+const log = document.getElementById("log");
+const starters = document.getElementById("starters");
+const resetBtn = document.getElementById("reset");
+
+let history = [];   // [{role, content}] sent to the server for follow-up questions
+let busy = false;
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// Small markdown renderer: paragraphs, lists, headings, bold, italic, code and [n] citations.
+function renderMarkdown(md, sources) {
+  const label = n => {
+    const s = sources.find(x => x.n === n);
+    return s ? escapeHtml([s.title, s.section].filter(Boolean).join(": ")) : "";
+  };
+  const inline = text => escapeHtml(text)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+    .replace(/\[(\d+)\]/g, (_, n) => `<span class="cite" title="${label(Number(n))}">${n}</span>`);
+
+  const out = [];
+  let list = null;    // "ul" | "ol"
+  let para = [];
+  const flushPara = () => { if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; } };
+  const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+
+  for (const raw of md.split("\n")) {
+    const line = raw.trim();
+    let m;
+    if (!line) { flushPara(); closeList(); continue; }
+    if ((m = line.match(/^#{1,6}\s+(.*)$/))) { flushPara(); closeList(); out.push(`<h3>${inline(m[1])}</h3>`); continue; }
+    if ((m = line.match(/^[-*•]\s+(.*)$/)) || (m = line.match(/^\d+[.)]\s+(.*)$/))) {
+      const type = /^\d/.test(line) ? "ol" : "ul";
+      flushPara();
+      if (list !== type) { closeList(); out.push(`<${type}>`); list = type; }
+      out.push(`<li>${inline(m[1])}</li>`);
+      continue;
+    }
+    if (list) closeList();
+    para.push(line);
+  }
+  flushPara(); closeList();
+  return out.join("");
+}
+
+function addQuestion(text) {
+  const el = document.createElement("div");
+  el.className = "q";
+  el.textContent = text;
+  log.append(el);
+}
+
+function addAnswerShell() {
+  const el = document.createElement("div");
+  el.className = "a pending";
+  el.textContent = "Checking the guide";
+  log.append(el);
+  el.scrollIntoView({ block: "nearest" });
+  return el;
+}
+
+function fillAnswer(el, data) {
+  el.className = "a";
+  const items = data.sources.map(s =>
+    `<li>${escapeHtml(s.title)}${s.section ? ": " + escapeHtml(s.section) : ""}</li>`).join("");
+  el.innerHTML = renderMarkdown(data.answer, data.sources) +
+    (data.sources.length
+      ? `<details><summary>From the guide: ${data.sources.length} sections</summary><ol>${items}</ol></details>`
+      : "");
+}
+
+function fillError(el, message) {
+  el.className = "a failed";
+  el.innerHTML = `<p><strong>That didn't work.</strong> ${escapeHtml(message)}</p>`;
+}
+
+async function ask(question) {
+  question = question.trim();
+  if (!question || busy) return;
+  busy = true;
+  sendBtn.disabled = true;
+  starters.hidden = true;
+  resetBtn.hidden = false;
+
+  addQuestion(question);
+  const el = addAnswerShell();
+
+  try {
+    const res = await fetch("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, history }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      fillError(el, data.error || `The server returned an error (${res.status}). Check the terminal running app.py.`);
+    } else {
+      fillAnswer(el, data);
+      history.push({ role: "user", content: question }, { role: "assistant", content: data.answer });
+    }
+  } catch {
+    fillError(el, "Can't reach the app. Make sure python app.py is still running in your terminal.");
+  } finally {
+    busy = false;
+    sendBtn.disabled = false;
+    el.scrollIntoView({ block: "start", behavior: "smooth" });
+    input.focus();
+  }
+}
+
+form.addEventListener("submit", e => {
+  e.preventDefault();
+  const q = input.value;
+  input.value = "";
+  autosize();
+  ask(q);
+});
+
+input.addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    form.requestSubmit();
+  }
+});
+
+function autosize() {
+  input.style.height = "auto";
+  input.style.height = Math.min(input.scrollHeight + 2, 160) + "px";
+}
+input.addEventListener("input", autosize);
+
+starters.addEventListener("click", e => {
+  const btn = e.target.closest("button");
+  if (btn) ask(btn.textContent);
+});
+
+resetBtn.addEventListener("click", () => {
+  history = [];
+  log.innerHTML = "";
+  starters.hidden = false;
+  resetBtn.hidden = true;
+  input.focus();
+});
+</script>
+</body>
+</html>

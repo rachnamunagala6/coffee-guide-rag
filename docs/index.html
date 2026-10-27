@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG with Elasticsearch: the Coffee Guide</title>
+<meta name="description" content="A technical walkthrough of a retrieval-augmented generation system built on Elasticsearch hybrid search and Claude.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  :root { --frame: #1D1510; --bar: #2A1F18; --ink: #EFE8D8; --soft: #B7A795; --accent: #E26A7C; --line: #47372B; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--frame); color: var(--ink); font: 400 16px/1.5 Figtree, system-ui, sans-serif;
+         display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Stage: slides are authored on a 1920x1080 canvas and scaled to fit. */
+  .stage { flex: 1; position: relative; min-height: 0; }
+  .canvas { position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px;
+            transform-origin: 0 0; box-shadow: 0 20px 60px rgba(0,0,0,.45); }
+  .slide { position: absolute; inset: 0; width: 1920px; height: 1080px; overflow: hidden;
+           opacity: 0; visibility: hidden; transition: opacity .35s ease, visibility 0s linear .35s; }
+  .slide.active { opacity: 1; visibility: visible; transition: opacity .35s ease; }
+  @media (prefers-reduced-motion: reduce) { .slide, .slide.active { transition: none; } }
+
+  /* Slide content defaults, matching the deck format (no margins, set line heights). */
+  .slide h1, .slide h2, .slide h3, .slide p, .slide ol, .slide ul, .slide table { margin: 0; }
+  .slide h1 { line-height: 1.1; } .slide h2 { line-height: 1.15; }
+  .slide h3 { line-height: 1.2; } .slide p { line-height: 1.4; }
+  .slide div:not([style*="display"]) { display: flex; flex-direction: column; }
+  .slide ol, .slide ul { padding-left: 1.3em; display: flex; flex-direction: column; gap: .2em; }
+  .slide table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; }
+  .slide th, .slide td { padding: .5em .7em; border-bottom: 1px solid #CBC9AE; vertical-align: top; }
+  .slide tr:last-child td { border-bottom: 0; }
+  .slide th { font-weight: 600; }
+  .slide aside { display: none; }
+  .slide .arrow { flex: none; height: 20px; }
+
+  /* Controls */
+  .bar { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--bar);
+         border-top: 1px solid var(--line); }
+  .bar .title { flex: 1; min-width: 0; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar button, .bar a { font: 500 15px Figtree, system-ui, sans-serif; color: var(--ink); background: transparent;
+         border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; cursor: pointer; text-decoration: none; }
+  .bar button:hover, .bar a:hover { border-color: var(--soft); }
+  .bar button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .bar button:disabled { opacity: .4; cursor: default; }
+  .count { font-variant-numeric: tabular-nums; color: var(--soft); min-width: 4.5em; text-align: center; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .notes { display: none; max-height: 28vh; overflow: auto; padding: 14px 20px 16px; background: var(--bar);
+           border-top: 1px solid var(--line); color: var(--ink); font-size: 17px; line-height: 1.6; }
+  .notes.open { display: block; }
+  .notes h2 { margin: 0 0 4px; font: 600 13px Figtree, sans-serif; color: var(--soft); }
+  .notes p { margin: 0; max-width: 70ch; }
+
+  @media (max-width: 640px) {
+    .bar { flex-wrap: wrap; }
+    .bar .title { flex-basis: 100%; order: -1; }
+    .bar .code { margin-left: auto; }
+  }
+</style>
+</head>
+<body>
+<main class="stage" id="stage" aria-roledescription="slide deck" aria-label="RAG with Elasticsearch: the Coffee Guide">
+  <div class="canvas" id="canvas">
+<section class="slide" id="cover" data-transition="fade" style="background:#2A1A12;color:#EFE8D8;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;justify-content:flex-end;gap:40px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:28px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<p style="font-size:32px;color:#E26A7C;font-weight:600">The coffee guide, under the hood</p>
+<h1 style="font-family:'Young Serif', Georgia, serif;font-size:160px;font-weight:400;line-height:1.0;letter-spacing:-2px;color:#EFE8D8">RAG with Elasticsearch</h1>
+<p style="font-size:44px;line-height:1.35;color:#D8CDB8;max-width:1400px">How hybrid retrieval finds the right passages and how Claude turns them into cited answers</p>
+<aside>This deck walks through the technical design of the coffee guide, a retrieval-augmented generation system. The focus is the retrieval side: how documents are chunked and indexed in Elasticsearch, how BM25 and vector search run side by side, how their results are fused, and how the retrieved passages become a grounded, cited answer.</aside>
+</section>
+<section class="slide" id="arch" data-transition="fade" style="background:#E6EAD6;color:#2A1A12;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:12px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<h2 style="font-family:'Young Serif', Georgia, serif;font-size:72px;font-weight:400;line-height:1.1">Architecture: two pipelines, one index</h2>
+<div style="display:flex;flex-direction:column;gap:20px">
+<p style="font-size:28px;font-weight:600;color:#66513F">Indexing (ingest.py), run when the docs change</p>
+<div style="display:flex;flex-direction:row;align-items:center;gap:12px">
+<p style="width:217px;font-size:24px;line-height:1.3;text-align:center;background:#F8F9F1;border:1px solid #CBC9AE;border-radius:14px;padding:20px 8px">Markdown guides</p>
+<svg class="arrow" style="width:48px" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="10" x2="40" y2="10" stroke="#66513F" stroke-width="2.5"/><path d="M36 4 L46 10 L36 16" fill="none" stroke="#66513F" stroke-width="2.5"/></svg>
+<p style="width:217px;font-size:24px;line-height:1.3;text-align:center;background:#F8F9F1;border:1px solid #CBC9AE;border-radius:14px;padding:20px 8px">Chunk by heading</p>
+<svg class="arrow" style="width:48px" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="10" x2="40" y2="10" stroke="#66513F" stroke-width="2.5"/><path d="M36 4 L46 10 L36 16" fill="none" stroke="#66513F" stroke-width="2.5"/></svg>
+<p style="width:217px;font-size:24px;line-height:1.3;text-align:center;background:#F8F9F1;border:1px solid #CBC9AE;border-radius:14px;padding:20px 8px">Embed (384-d)</p>
+<svg class="arrow" style="width:48px" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="10" x2="40" y2="10" stroke="#66513F" stroke-width="2.5"/><path d="M36 4 L46 10 L36 16" fill="none" stroke="#66513F" stroke-width="2.5"/></svg>
+<p style="width:217px;font-size:24px;line-height:1.3;text-align:center;background:#F8F9F1;border:1px solid #CBC9AE;border-radius:14px;padding:20px 8px">Bulk index</p>
+<svg class="arrow" style="width:48px" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="10" x2="40" y2="10" stroke="#66513F" stroke-width="2.5"/><path d="M36 4 L46 10 L36 16" fill="none" stroke="#66513F" stroke-width="2.5"/></svg>
+<p style="width:217px;font-size:24px;line-height:1.3;text-align:center;color:#F8F9F1;background:#2A1A12;border-radius:14px;padding:20px 8px">Elasticsearch</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:20px">
+<p style="font-size:28px;font-weight:600;color:#66513F">Query (search.py, ask.py), on every question</p>
+<div style="display:flex;flex-direction:row;align-items:center;gap:12px">
+<p style="width:217px;font-size:24px;line-height:1.3;text-align:center;background:#F8F9F1;border:1px solid #CBC9AE;border-radius:14px;padding:20px 8px">Question + last turn</p>
+<svg class="arrow" style="width:48px" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="10" x2="40" y2="10" stroke="#66513F" stroke-width="2.5"/><path d="M36 4 L46 10 L36 16" fill="none" stroke="#66513F" stroke-width="2.5"/></svg>
+<p style="width:217px;font-size:24px;line-height:1.3;text-align:center;color:#F8F9F1;background:#2A1A12;border-radius:14px;padding:20px 8px">BM25 + kNN, top 20 each</p>
+<svg class="arrow" style="width:48px" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="10" x2="40" y2="10" stroke="#66513F" stroke-width="2.5"/><path d="M36 4 L46 10 L36 16" fill="none" stroke="#66513F" stroke-width="2.5"/></svg>
+<p style="width:217px;font-size:24px;line-height:1.3;text-align:center;background:#F8F9F1;border:1px solid #CBC9AE;border-radius:14px;padding:20px 8px">RRF fusion</p>
+<svg class="arrow" style="width:48px" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="10" x2="40" y2="10" stroke="#66513F" stroke-width="2.5"/><path d="M36 4 L46 10 L36 16" fill="none" stroke="#66513F" stroke-width="2.5"/></svg>
+<p style="width:217px;font-size:24px;line-height:1.3;text-align:center;background:#F8F9F1;border:1px solid #CBC9AE;border-radius:14px;padding:20px 8px">Top 5 chunks</p>
+<svg class="arrow" style="width:48px" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="10" x2="40" y2="10" stroke="#66513F" stroke-width="2.5"/><path d="M36 4 L46 10 L36 16" fill="none" stroke="#66513F" stroke-width="2.5"/></svg>
+<p style="width:217px;font-size:24px;line-height:1.3;text-align:center;background:#F8F9F1;border:1px solid #CBC9AE;border-radius:14px;padding:20px 8px">Prompt + Claude</p>
+<svg class="arrow" style="width:48px" viewBox="0 0 48 20" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="10" x2="40" y2="10" stroke="#66513F" stroke-width="2.5"/><path d="M36 4 L46 10 L36 16" fill="none" stroke="#66513F" stroke-width="2.5"/></svg>
+<p style="width:217px;font-size:24px;line-height:1.3;text-align:center;color:#F8F9F1;background:#A3253A;border-radius:14px;padding:20px 8px">Cited answer</p>
+</div>
+</div>
+<p style="font-size:32px;line-height:1.45;color:#66513F;max-width:1500px">Each chunk is stored once with both its text and its vector, so one Elasticsearch index serves keyword and vector search.</p>
+<aside>Indexing runs offline: Markdown guides are split at headings, each chunk is embedded into a 384-dimensional vector, and text plus vector are bulk-indexed. At query time the question, plus the previous question for follow-ups, goes to two retrievers in parallel, BM25 and kNN, each returning its top 20. Reciprocal rank fusion merges them, the top five chunks are numbered into the prompt, and Claude answers with citations.</aside>
+</section>
+<section class="slide" id="chunking" data-section="Indexing: chunking, the Elasticsearch mapping, embeddings and ingestion" data-transition="fade" style="background:#F8F9F1;color:#2A1A12;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:12px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<h2 style="font-family:'Young Serif', Georgia, serif;font-size:72px;font-weight:400;line-height:1.1">Chunking: one topic per chunk</h2>
+<div style="display:flex;flex-direction:row;gap:64px">
+<div style="width:680px;display:flex;flex-direction:column;gap:28px">
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Split at Markdown headings</b>, not fixed word counts, so a chunk never mixes the end of one recipe with the start of the next.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Prepend the heading path</b> to the text, so both BM25 and the embedding see the topic.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Fallback for long sections:</b> 250-word windows with 50 words of overlap.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Result:</b> 7 guides become 55 chunks of 26 to 179 words.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px;background:#2A1A12;border-radius:20px;padding:40px">
+<p style="font-size:24px;color:#B7A795">One indexed document</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.55;color:#EFE8D8">{<br>&#160;&#160;"title": "How to Brew: Step-by-Step Methods",<br>&#160;&#160;"section": "French press",<br>&#160;&#160;"text": "How to Brew: Step-by-Step Methods<br>&#160;&#160;&#160;&#160;- French press\n**You need:** coarse<br>&#160;&#160;&#160;&#160;grind, about 1:15 ratio...",<br>&#160;&#160;"source": "docs/06-brew-methods.md",<br>&#160;&#160;"chunk_id": 3,<br>&#160;&#160;"embedding": [0.021, -0.087, <span style="color:#E26A7C">...384</span>]<br>}</p>
+</div>
+</div>
+<aside>Chunking has the biggest effect on retrieval quality. The first version used fixed 300-word windows, which can cut across topics: one chunk ends up half drip machine and half pour-over, its embedding sits between the two, and its citation points at neither cleanly. Splitting on headings makes each chunk self-contained and makes the citation meaningful: a section name the user recognizes. The heading path is prepended to the text so a query like "french press" matches the chunk even if the body never repeats the phrase. The embedding values shown are illustrative.</aside>
+</section>
+<section class="slide" id="mapping" data-transition="fade" style="background:#E6EAD6;color:#2A1A12;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:12px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<h2 style="font-family:'Young Serif', Georgia, serif;font-size:72px;font-weight:400;line-height:1.1">The index mapping</h2>
+<div style="display:flex;flex-direction:row;gap:64px">
+<div style="width:920px;display:flex;flex-direction:column;background:#2A1A12;border-radius:20px;padding:40px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.55;color:#EFE8D8">"properties": {<br>&#160;&#160;"text":&#160;&#160;&#160;&#160;{ "type": "text", "analyzer": "english" },<br>&#160;&#160;"title":&#160;&#160;&#160;{ "type": "text", "analyzer": "english" },<br>&#160;&#160;"section": { "type": "text", "analyzer": "english",<br>&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;"fields": { "raw": { "type": "keyword" } } },<br>&#160;&#160;"source":&#160;&#160;{ "type": "keyword" },<br>&#160;&#160;"chunk_id": { "type": "integer" },<br>&#160;&#160;"embedding": {<br>&#160;&#160;&#160;&#160;"type": "dense_vector", <span style="color:#E26A7C">"dims": 384</span>,<br>&#160;&#160;&#160;&#160;"index": true, "similarity": "cosine"<br>&#160;&#160;}<br>}</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:28px">
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Two structures, one document.</b> Text fields go into an inverted index for BM25; the vector goes into an HNSW graph for kNN.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">english analyzer</b> stems words and drops stop words, so “grinding” matches “grind”.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">source as keyword</b> allows exact-match deletes when a file is re-ingested.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">dims is fixed</b> at creation: a new embedding model means rebuilding with --recreate.</p>
+</div>
+</div>
+<aside>The mapping is created explicitly rather than letting Elasticsearch guess field types. The text, title and section fields use the English analyzer for stemming. Section also has a keyword sub-field for exact filtering or aggregations. The dense_vector field is indexed, which builds an HNSW graph for approximate nearest-neighbour search, using cosine similarity. Because the embeddings are normalized to unit length, cosine and dot product give the same ranking.</aside>
+</section>
+<section class="slide" id="embeddings" data-transition="fade" style="background:#F8F9F1;color:#2A1A12;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:12px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<h2 style="font-family:'Young Serif', Georgia, serif;font-size:72px;font-weight:400;line-height:1.1">Embeddings: meaning as 384 numbers</h2>
+<div style="display:flex;flex-direction:row;gap:80px;align-items:flex-start">
+<div style="width:520px;display:flex;flex-direction:column;gap:8px">
+<p style="font-family:'Young Serif', Georgia, serif;font-size:200px;line-height:1.0;color:#A3253A">384</p>
+<p style="font-size:30px;line-height:1.4;color:#66513F">dimensions per chunk, from all-MiniLM-L6-v2</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:28px">
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Runs locally</b> through sentence-transformers on a CPU: a 90 MB model, loaded once and cached.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Normalized to unit length</b>, so cosine similarity and dot product rank results the same way.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Same model for chunks and questions.</b> Vectors from different models live in different spaces and can’t be compared.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Short input window</b> (256 tokens) is one more reason to keep chunks small.</p>
+</div>
+</div>
+<aside>The embedding model maps text with similar meaning to nearby points, which is what lets "tastes like vinegar" land near the section about sour coffee. MiniLM is a deliberate starting choice: small, fast and free. Stronger options are bge-small or bge-base from the same library, or Elastic's own inference endpoints, which move embedding inside the cluster. Any change of model requires re-indexing, since dims and vector space change.</aside>
+</section>
+<section class="slide" id="ingest" data-transition="fade" style="background:#E6EAD6;color:#2A1A12;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:12px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<h2 style="font-family:'Young Serif', Georgia, serif;font-size:72px;font-weight:400;line-height:1.1">Ingestion is idempotent</h2>
+<div style="display:flex;flex-direction:row;gap:64px">
+<div style="width:640px;display:flex;flex-direction:column;gap:20px">
+<p style="font-size:24px;font-weight:600;color:#66513F">For each file</p>
+<ol style="font-size:30px;line-height:1.45;color:#2A1A12">
+<li>Chunk it by heading</li>
+<li>Delete its old chunks by source</li>
+<li>Embed all chunks in one batch</li>
+<li>Bulk index with deterministic IDs</li>
+<li>Refresh so they’re searchable</li>
+</ol>
+<p style="font-size:30px;line-height:1.45;color:#66513F">Re-running never duplicates, and an edited file leaves no stale chunks behind.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;background:#2A1A12;border-radius:20px;padding:40px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.55;color:#EFE8D8">es.delete_by_query(index=INDEX,<br>&#160;&#160;&#160;&#160;query={"term": {"source": source}})<br><br>vectors = embed([c["text"] for c in chunks])<br><br>actions = [{<br>&#160;&#160;"_index": INDEX,<br>&#160;&#160;<span style="color:#E26A7C">"_id": sha1(f"{source}:{i}")</span>,<br>&#160;&#160;"_source": {**chunk, "source": source,<br>&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;"chunk_id": i, "embedding": vec},<br>} for i, (chunk, vec) in enumerate(...)]<br><br>helpers.bulk(es, actions)</p>
+</div>
+</div>
+<aside>Delete-then-insert per file handles the case where an edited file now has fewer chunks: deterministic IDs alone would leave the old tail behind. Batching the embeddings is much faster than embedding one chunk at a time, and the bulk helper sends all of a file's documents in one request. The code is simplified from ingest.py: sha1 stands for hashlib.sha1 of the string, hex-encoded.</aside>
+</section>
+<section class="slide" id="retrieve" data-transition="fade" style="background:#F8F9F1;color:#2A1A12;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:12px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<h2 style="font-family:'Young Serif', Georgia, serif;font-size:72px;font-weight:400;line-height:1.1">Two retrievers, side by side</h2>
+<div style="display:flex;flex-direction:row;gap:32px">
+<div style="flex:1;display:flex;flex-direction:column;gap:16px">
+<h3 style="font-family:'Young Serif', Georgia, serif;font-size:44px;font-weight:400;line-height:1.2">BM25 keyword search</h3>
+<div style="display:flex;flex-direction:column;background:#2A1A12;border-radius:20px;padding:32px 40px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.5;color:#EFE8D8">es.search(index=INDEX, size=20,<br>&#160;&#160;query={"multi_match": {<br>&#160;&#160;&#160;&#160;"query": question,<br>&#160;&#160;&#160;&#160;"fields": ["text",<br>&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<span style="color:#E26A7C">"section^2"</span>, "title"]<br>&#160;&#160;}},<br>&#160;&#160;source_excludes=["embedding"])</p>
+</div>
+<p style="font-size:28px;line-height:1.45;color:#66513F">Stemmed term matching, with heading matches weighted double. Strong on names and numbers like “AeroPress” or “1:16”.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px">
+<h3 style="font-family:'Young Serif', Georgia, serif;font-size:44px;font-weight:400;line-height:1.2">kNN vector search</h3>
+<div style="display:flex;flex-direction:column;background:#2A1A12;border-radius:20px;padding:32px 40px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.5;color:#EFE8D8">es.search(index=INDEX, size=20,<br>&#160;&#160;knn={<br>&#160;&#160;&#160;&#160;"field": "embedding",<br>&#160;&#160;&#160;&#160;"query_vector": embed([question])[0],<br>&#160;&#160;&#160;&#160;<span style="color:#E26A7C">"k": 20, "num_candidates": 100</span><br>&#160;&#160;},<br>&#160;&#160;source_excludes=["embedding"])</p>
+</div>
+<p style="font-size:28px;line-height:1.45;color:#66513F">Approximate nearest neighbours on the HNSW graph. Strong on paraphrase: “tastes like vinegar” finds the sour-coffee section.</p>
+</div>
+</div>
+<aside>Both queries hit the same index and each returns its top 20 hits. num_candidates sets how many vectors HNSW examines per shard before keeping the best k; raising it improves recall at some cost in speed. source_excludes drops the 384-number vector from responses, since only the text is needed downstream. Neither retriever alone is enough: BM25 misses paraphrases, and vector search can miss exact names and numbers.</aside>
+</section>
+<section class="slide" id="rrf" data-transition="fade" style="background:#E6EAD6;color:#2A1A12;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:12px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<h2 style="font-family:'Young Serif', Georgia, serif;font-size:72px;font-weight:400;line-height:1.1">Reciprocal rank fusion merges the lists</h2>
+<div style="display:flex;flex-direction:row;gap:64px">
+<div style="width:720px;display:flex;flex-direction:column;gap:28px">
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:36px;line-height:1.4;color:#F8F9F1;background:#2A1A12;border-radius:20px;padding:32px 40px">score = Σ 1 / (<span style="color:#E26A7C">60</span> + rank)</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Ranks, not raw scores.</b> BM25 scores are unbounded and cosine sits between 0 and 1, so they can’t simply be added.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">k = 60</b> keeps a single first place from outweighing agreement between both lists.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">About 10 lines of Python</b>, so it doesn’t depend on Elasticsearch version or license.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:16px">
+<p style="font-size:24px;font-weight:600;color:#66513F">Illustrative example</p>
+<table style="font-size:28px;color:#2A1A12;background:#F8F9F1;border:1px solid #CBC9AE;border-radius:16px">
+<tr><th style="width:40%;text-align:left">Chunk</th><th style="width:19%;text-align:right">BM25</th><th style="width:19%;text-align:right">kNN</th><th style="width:22%;text-align:right">RRF</th></tr>
+<tr><td>French press</td><td style="text-align:right">1</td><td style="text-align:right">2</td><td style="text-align:right">0.0325</td></tr>
+<tr><td>Grind size by brew method</td><td style="text-align:right">3</td><td style="text-align:right">1</td><td style="text-align:right">0.0323</td></tr>
+<tr><td>Cold brew</td><td style="text-align:right">2</td><td style="text-align:right">not found</td><td style="text-align:right">0.0161</td></tr>
+</table>
+<p style="font-size:28px;line-height:1.45;color:#66513F">Cold brew ranks second for keywords but drops to third: only one retriever found it.</p>
+</div>
+</div>
+<aside>Each chunk gets one over sixty plus its rank in every list it appears in, and the scores are summed. A chunk that both retrievers agree on beats one that only a single retriever ranks highly. The table is a worked example of the arithmetic, not measured output. Elasticsearch also offers RRF as a built-in retriever in newer versions, with availability depending on version and license; doing it client-side keeps the project portable.</aside>
+</section>
+<section class="slide" id="generate" data-transition="fade" style="background:#F8F9F1;color:#2A1A12;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:12px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<h2 style="font-family:'Young Serif', Georgia, serif;font-size:72px;font-weight:400;line-height:1.1">Generation: grounding the answer</h2>
+<div style="display:flex;flex-direction:row;gap:64px">
+<div style="width:680px;display:flex;flex-direction:column;gap:24px">
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Follow-up aware retrieval:</b> the search query is the previous question plus the new one.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Numbered context:</b> the top 5 chunks go in as [1] to [5].</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">System prompt rules:</b> cite with [n], say when the guides don’t cover it, never invent specifics.</p>
+<p style="font-size:30px;line-height:1.45;color:#66513F"><b style="color:#2A1A12">Short memory:</b> the last 3 exchanges are sent as history.</p>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px;background:#2A1A12;border-radius:20px;padding:40px">
+<p style="font-size:24px;color:#B7A795">The request sent to Claude</p>
+<p style="font-family:'JetBrains Mono', 'Courier New', monospace;font-size:24px;line-height:1.5;color:#EFE8D8"><span style="color:#E26A7C">system:</span> coffee-guide rules<br><span style="color:#E26A7C">messages:</span> ...last 6 turns...<br><span style="color:#E26A7C">user:</span><br>&#160;&#160;&lt;guides&gt;<br>&#160;&#160;[1]<br>&#160;&#160;How to Brew: Step-by-Step Methods<br>&#160;&#160;&#160;&#160;- French press<br>&#160;&#160;**You need:** coarse grind, about 1:15...<br>&#160;&#160;[2] Grinding Coffee - Grind size...<br>&#160;&#160;&lt;/guides&gt;<br>&#160;&#160;Question: How do I use a French press?</p>
+</div>
+</div>
+<aside>Retrieval quality sets the ceiling; the prompt makes sure the model stays under it. Numbering the passages lets the model cite precisely, and the same numbers map back to source sections in the web interface. Appending the previous question to the search query is a simple form of query rewriting: "what about for espresso?" on its own has little to retrieve against. History is capped at six messages to keep cost and latency flat as a conversation grows.</aside>
+</section>
+<section class="slide" id="stack" data-transition="fade" style="background:#E6EAD6;color:#2A1A12;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:48px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:12px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<h2 style="font-family:'Young Serif', Georgia, serif;font-size:72px;font-weight:400;line-height:1.1">Components and serving</h2>
+<table style="font-size:28px;color:#2A1A12;background:#F8F9F1;border:1px solid #CBC9AE;border-radius:16px">
+<tr><th style="width:20%;text-align:left">Layer</th><th style="width:38%;text-align:left">Choice</th><th style="width:42%;text-align:left">Notes</th></tr>
+<tr><td>Search engine</td><td>Elasticsearch 8.17, single node in Docker</td><td>Security off for local development only</td></tr>
+<tr><td>Embeddings</td><td>all-MiniLM-L6-v2 via sentence-transformers</td><td>Loaded once when the server starts</td></tr>
+<tr><td>Generation</td><td>Claude through the Messages API</td><td>Up to 1,024 output tokens per answer</td></tr>
+<tr><td>API</td><td>FastAPI, POST /api/ask</td><td>Turns search and API failures into readable errors</td></tr>
+<tr><td>Interface</td><td>One HTML page, no build step</td><td>Renders citations and the source list</td></tr>
+</table>
+<p style="font-size:30px;line-height:1.45;color:#66513F">About 440 lines of Python across five scripts: common, ingest, search, ask and app.</p>
+<aside>Everything except the call to Claude runs locally. The API endpoint returns the answer text plus a list of numbered sources, which the page uses to render citation markers. Error handling maps the common failures, Elasticsearch unreachable, index missing, invalid API key, no credit, to plain-language messages with the fix.</aside>
+</section>
+<section class="slide" id="tuning" data-transition="fade" style="background:#F8F9F1;color:#2A1A12;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:40px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:12px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<h2 style="font-family:'Young Serif', Georgia, serif;font-size:72px;font-weight:400;line-height:1.1">Tuning: debug retrieval first</h2>
+<p style="font-size:30px;line-height:1.45;border-left:6px solid #A3253A;padding:8px 0 8px 32px;max-width:1500px">Run <b>search.py</b> on a bad answer’s question. Right section missing: a retrieval problem. Right section present: a prompt problem.</p>
+<table style="font-size:28px;color:#2A1A12;background:#E6EAD6;border:1px solid #CBC9AE;border-radius:16px">
+<tr><th style="width:32%;text-align:left">Setting</th><th style="width:18%;text-align:left">Current</th><th style="width:50%;text-align:left">Raising it</th></tr>
+<tr><td>TOP_K chunks to Claude</td><td>5</td><td>More context, but more noise and cost</td></tr>
+<tr><td>Hits per retriever</td><td>20</td><td>Deeper lists for fusion to work with</td></tr>
+<tr><td>num_candidates</td><td>100</td><td>Better kNN recall, slower queries</td></tr>
+<tr><td>Section boost</td><td>2×</td><td>Headings dominate keyword ranking more</td></tr>
+<tr><td>RRF k</td><td>60</td><td>Flatter weighting across ranks</td></tr>
+<tr><td>Chunk window / overlap</td><td>250 / 50 words</td><td>Only affects sections over 250 words</td></tr>
+</table>
+<aside>Separating retrieval from generation is the most useful debugging habit in RAG. If the right chunk never reaches the prompt, no prompt change will fix it; look at chunking, boosts or the embedding model. If it does reach the prompt and the answer is still wrong, the problem is the instructions. Each setting here lives in .env or a function default, so it can be changed without touching the pipeline.</aside>
+</section>
+<section class="slide" id="next" data-transition="fade" style="background:#E6EAD6;color:#2A1A12;font-family:'Figtree', Arial, sans-serif;padding:128px;display:flex;flex-direction:column;gap:56px">
+<div style="position:absolute;left:0;top:0;width:1920px;height:12px;display:flex;flex-direction:row">
+<div style="flex:1;background:#A7B784"></div>
+<div style="flex:1;background:#CDB27A"></div>
+<div style="flex:1;background:#B07D4B"></div>
+<div style="flex:1;background:#7F4E2C"></div>
+<div style="flex:1;background:#52301D"></div>
+<div style="flex:1;background:#3B2216"></div>
+</div>
+<h2 style="font-family:'Young Serif', Georgia, serif;font-size:72px;font-weight:400;line-height:1.1">Technical next steps</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:32px">
+<div style="display:flex;flex-direction:column;gap:12px;background:#2A1A12;border-radius:20px;padding:40px">
+<h3 style="font-family:'Young Serif', Georgia, serif;font-size:40px;font-weight:400;line-height:1.2;color:#EFE8D8">Measure retrieval</h3>
+<p style="font-size:28px;line-height:1.45;color:#D8CDB8">Recall@5 and MRR on a labeled set of real questions, before tuning anything else.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#F8F9F1;border-radius:20px;padding:40px">
+<h3 style="font-family:'Young Serif', Georgia, serif;font-size:40px;font-weight:400;line-height:1.2">Rerank</h3>
+<p style="font-size:28px;line-height:1.45;color:#66513F">Score the top 20 fused hits with a cross-encoder, then keep the best 5.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#F8F9F1;border-radius:20px;padding:40px">
+<h3 style="font-family:'Young Serif', Georgia, serif;font-size:40px;font-weight:400;line-height:1.2">Embed in the cluster</h3>
+<p style="font-size:28px;line-height:1.45;color:#66513F">Elastic inference endpoints instead of a local Python model.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#F8F9F1;border-radius:20px;padding:40px">
+<h3 style="font-family:'Young Serif', Georgia, serif;font-size:40px;font-weight:400;line-height:1.2">Native hybrid search</h3>
+<p style="font-size:28px;line-height:1.45;color:#66513F">One request with Elasticsearch’s retriever API and built-in RRF, where licensed.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#F8F9F1;border-radius:20px;padding:40px">
+<h3 style="font-family:'Young Serif', Georgia, serif;font-size:40px;font-weight:400;line-height:1.2">Metadata filters</h3>
+<p style="font-size:28px;line-height:1.45;color:#66513F">Brew method or roast as keyword fields, filtering both retrievers.</p>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px;background:#F8F9F1;border-radius:20px;padding:40px">
+<h3 style="font-family:'Young Serif', Georgia, serif;font-size:40px;font-weight:400;line-height:1.2">Production hardening</h3>
+<p style="font-size:28px;line-height:1.45;color:#66513F">Security and API keys, streamed responses, caching repeat questions.</p>
+</div>
+</div>
+<aside>Measuring comes first because every other change needs a number to show it helped. A small set of twenty to thirty questions, each labeled with the section that should be retrieved, gives recall at five and mean reciprocal rank. Reranking is usually the biggest single quality gain after hybrid search. Moving embedding and fusion into Elasticsearch simplifies the Python side but ties the project to a version and license that support those features.</aside>
+</section>
+  </div>
+</main>
+<section class="notes" id="notes" aria-label="Speaker notes"><h2>Speaker notes</h2><p id="notes-text"></p></section>
+<nav class="bar" aria-label="Slide controls">
+  <span class="title">RAG with Elasticsearch: the Coffee Guide</span>
+  <button type="button" id="prev" aria-label="Previous slide">Previous</button>
+  <span class="count" id="count" aria-live="polite"></span>
+  <button type="button" id="next" aria-label="Next slide">Next</button>
+  <button type="button" id="notes-btn" aria-pressed="false">Notes</button>
+  <a class="code" href="https://github.com/rachnamunagala6/coffee-guide-rag">View the code</a>
+</nav>
+<script>
+const slides = [...document.querySelectorAll(".slide")];
+const canvas = document.getElementById("canvas");
+const stage = document.getElementById("stage");
+const count = document.getElementById("count");
+const prev = document.getElementById("prev");
+const next = document.getElementById("next");
+const notes = document.getElementById("notes");
+const notesText = document.getElementById("notes-text");
+const notesBtn = document.getElementById("notes-btn");
+let i = 0;
+
+function fit() {
+  const s = Math.min(stage.clientWidth / 1920, stage.clientHeight / 1080) * 0.96;
+  canvas.style.transform = `scale(${s}) translate(-50%, -50%)`;
+}
+
+function show(n) {
+  i = Math.max(0, Math.min(slides.length - 1, n));
+  slides.forEach((el, k) => {
+    el.classList.toggle("active", k === i);
+    el.setAttribute("aria-hidden", k === i ? "false" : "true");
+  });
+  count.textContent = `${i + 1} / ${slides.length}`;
+  prev.disabled = i === 0;
+  next.disabled = i === slides.length - 1;
+  const aside = slides[i].querySelector("aside");
+  notesText.textContent = aside ? aside.textContent : "No notes for this slide.";
+  history.replaceState(null, "", `#${i + 1}`);
+}
+
+function toggleNotes() {
+  const open = notes.classList.toggle("open");
+  notesBtn.setAttribute("aria-pressed", open);
+  fit();
+}
+
+prev.onclick = () => show(i - 1);
+next.onclick = () => show(i + 1);
+notesBtn.onclick = toggleNotes;
+document.addEventListener("keydown", e => {
+  if (e.target.closest("a, button") && (e.key === " " || e.key === "Enter")) return;
+  if (["ArrowRight", "PageDown", " "].includes(e.key)) { e.preventDefault(); show(i + 1); }
+  else if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); show(i - 1); }
+  else if (e.key === "Home") show(0);
+  else if (e.key === "End") show(slides.length - 1);
+  else if (e.key === "n" || e.key === "N") toggleNotes();
+});
+let touchX = null;
+stage.addEventListener("touchstart", e => { touchX = e.touches[0].clientX; }, { passive: true });
+stage.addEventListener("touchend", e => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX;
+  if (Math.abs(dx) > 40) show(i + (dx < 0 ? 1 : -1));
+  touchX = null;
+});
+stage.addEventListener("click", e => { if (!e.target.closest("a")) show(i + 1); });
+window.addEventListener("resize", fit);
+
+fit();
+show((parseInt(location.hash.slice(1), 10) || 1) - 1);
+</script>
+</body>
+</html>

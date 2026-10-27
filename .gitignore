@@ -1,0 +1,13 @@
+# Secrets: never commit your API key
+.env
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
